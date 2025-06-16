@@ -3,8 +3,10 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 import sys
+# from subdirectory.filename import function_name
+from functions.get_files_info import get_files_info
 
-from pydantic_core.core_schema import url_schema
+# from pydantic_core.core_schema import url_schema
 
 load_dotenv()
 api_key = os.environ.get("GEMINI_API_KEY")
@@ -26,6 +28,9 @@ def main():
 
     user_prompt = args[1]
 
+    print(get_files_info("calculator", "."))
+
+'''
     messages = [
         types.Content(role="user", parts=[types.Part(text=user_prompt)]),
     ]
@@ -41,7 +46,7 @@ def main():
         print(f"User prompt: {user_prompt}")
         print(f"Prompt tokens: {metadata.prompt_token_count}")
         print(f"Response tokens: {metadata.candidates_token_count}")
-
+'''
 if __name__ == "__main__":
     main()
 
