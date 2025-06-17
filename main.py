@@ -197,7 +197,7 @@ def main():
                     if verbose:
                         print(f"-> {func_call_res.parts[0].function_response.response}")
 
-                messages.extend(func_responses)
+            messages.extend(func_responses)
 
         if not function_called:
             print("Final response:")
