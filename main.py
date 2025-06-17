@@ -4,7 +4,8 @@ from google import genai
 from google.genai import types
 import sys
 # from subdirectory.filename import function_name
-from functions.get_files_info import get_files_info
+from functions.get_files_info import get_files_info, get_file_content, write_file
+from functions.run_python import run_python_file
 
 
 SYSTEM_PROMPT = """
@@ -87,7 +88,12 @@ schema_write_file = types.FunctionDeclaration(
 
 
 
-
+function_map = {
+        "get_files_info": get_files_info,
+        "get_file_content": get_file_content,
+        "write_file": write_file,
+        "run_python_file": run_python_file,
+        }
 
 available_functions = types.Tool(
     function_declarations=[
@@ -98,8 +104,49 @@ available_functions = types.Tool(
     ]
 )
 
+def call_function(function_call_part, verbose=False):
+    func_name = function_call_part.name
+    args = dict(function_call_part.args)
+
+    args["working_directory"] = "./calculator"
+
+    if verbose:
+        print(f"Calling function: {func_name}({args})")
+    else:
+        print(f" - Calling function: {func_name}")
+
+    func = function_map.get(func_name)
+    if not func:
+        return types.Content(
+            role="tool",
+            parts=[
+                types.Part.from_function_response(
+                    name=func_name,
+                    response={"error": f"Unknown function: {func_name}"},
+                )
+            ],
+        )
+
+    try:
+        res = func(**args)
+    except Exception as e:
+        res = f"Error: {e}"
+        
+    return types.Content(
+        role="tool",
+        parts=[
+            types.Part.from_function_response(
+                name=func_name,
+                response={"result": res},
+            )
+        ],
+    )
+
+
+
 def main():
 
+    working_dir = "./calculator"
     verbose = False
     args = sys.argv
 
@@ -113,7 +160,7 @@ def main():
 
     user_prompt = args[1]
 
-    # print(get_files_info("calculator", "."))
+    # print(get_files_info(working_dir, "."))
 
     messages = [
         types.Content(role="user", parts=[types.Part(text=user_prompt)]),
@@ -128,7 +175,20 @@ def main():
     func_calls = response.function_calls
     if func_calls != None:
         for call in func_calls:
-            print(f"Calling function: {call.name}({call.args})")
+            func_call_res = call_function(call, verbose)
+
+            if (
+                not func_call_res.parts or
+                not hasattr(func_call_res.parts[0], "function_response") or
+                func_call_res.parts[0].function_response is None or
+                not hasattr(func_call_res.parts[0].function_response, "response") or
+                func_call_res.parts[0].function_response.response is None
+                ):
+
+                raise RuntimeError("Function call did not return a valid response.")
+
+            print(f"-> {func_call_res.parts[0].function_response.response}")
+
 
     print(response.text)
 
