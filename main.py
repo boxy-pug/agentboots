@@ -7,6 +7,7 @@ import sys
 from functions.get_files_info import get_files_info, get_file_content, write_file
 from functions.run_python import run_python_file
 
+MAX_ITERATIONS = 20
 
 SYSTEM_PROMPT = """
 You are a helpful AI coding agent.
@@ -146,7 +147,6 @@ def call_function(function_call_part, verbose=False):
 
 def main():
 
-    working_dir = "./calculator"
     verbose = False
     args = sys.argv
 
@@ -159,45 +159,62 @@ def main():
             verbose = True
 
     user_prompt = args[1]
-
-    # print(get_files_info(working_dir, "."))
-
+    iterations = 0
     messages = [
-        types.Content(role="user", parts=[types.Part(text=user_prompt)]),
-    ]
+            types.Content(role="user", parts=[types.Part(text=user_prompt)]),
+            ]
 
-    response = client.models.generate_content(
-            model='gemini-2.0-flash-001', 
-            contents=messages,
-            config=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT, tools=[available_functions]),
-                        )
+    while iterations < MAX_ITERATIONS:
 
-    func_calls = response.function_calls
-    if func_calls != None:
-        for call in func_calls:
-            func_call_res = call_function(call, verbose)
+        response = client.models.generate_content(
+                model='gemini-2.0-flash-001', 
+                contents=messages,
+                config=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT, tools=[available_functions]),
+                            )
 
-            if (
-                not func_call_res.parts or
-                not hasattr(func_call_res.parts[0], "function_response") or
-                func_call_res.parts[0].function_response is None or
-                not hasattr(func_call_res.parts[0].function_response, "response") or
-                func_call_res.parts[0].function_response.response is None
+        for cand in getattr(response, "candidates", []):
+            if hasattr(cand, "content") and cand.content:
+                messages.append(cand.content)
+
+        func_calls = response.function_calls
+        function_called = False
+
+        func_responses = []
+        if func_calls: 
+            for call in func_calls:
+                func_call_res = call_function(call, verbose)
+
+                func_responses.append(func_call_res)
+                function_called = True
+
+                if (
+                    func_call_res.parts and
+                    hasattr(func_call_res.parts[0], "function_response") and
+                    func_call_res.parts[0].function_response is not None and
+                    hasattr(func_call_res.parts[0].function_response, "response") and
+                    func_call_res.parts[0].function_response.response is not None
                 ):
+                    if verbose:
+                        print(f"-> {func_call_res.parts[0].function_response.response}")
 
-                raise RuntimeError("Function call did not return a valid response.")
+                messages.extend(func_responses)
 
-            print(f"-> {func_call_res.parts[0].function_response.response}")
+        if not function_called:
+            print("Final response:")
+            print(response.text)
+
+            metadata = response.usage_metadata
+            if verbose and metadata is not None:
+                print(f"User prompt: {user_prompt}")
+                print(f"Prompt tokens: {metadata.prompt_token_count}")
+                print(f"Response tokens: {metadata.candidates_token_count}")
+
+            break
+
+        iterations += 1
 
 
-    print(response.text)
 
-    metadata = response.usage_metadata
-
-    if verbose and metadata is not None:
-        print(f"User prompt: {user_prompt}")
-        print(f"Prompt tokens: {metadata.prompt_token_count}")
-        print(f"Response tokens: {metadata.candidates_token_count}")
 
 if __name__ == "__main__":
     main()
